@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -8,7 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/pflag"
+
 	"github.com/gomarkdown/markdown"
+	"github.com/gomarkdown/markdown/ast"
 	"github.com/gomarkdown/markdown/html"
 	"github.com/gomarkdown/markdown/parser"
 
@@ -16,18 +20,41 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-func main() {
+const TOC = "{{.TOC}}"
 
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: md2tp <file_path>")
-		os.Exit(1)
-	}
-	// Read the markdown file
-	markdownFile := os.Args[1]
+func main() {
+	var (
+		footerTemplateParm string
+		footerTemplate     string
+		markdownFile       string
+	)
+
+	pflag.StringVar(&markdownFile, "markdown", "", "markdown file")
+	pflag.StringVar(&footerTemplateParm, "footer-template", "", "Footer template")
+
+	// Parse flags
+	pflag.Parse()
 
 	if !fileExists(markdownFile) {
 		log.Printf("File does not exist: %s\n", markdownFile)
 		os.Exit(1)
+	}
+
+	// Conditionally add FooterTemplate
+	if (footerTemplateParm != "") && !fileExists(footerTemplateParm) {
+		log.Printf("Footer template not found: %v\n", footerTemplateParm)
+		footerTemplateParm = ""
+	}
+	if (footerTemplateParm != "") && fileExists(footerTemplateParm) {
+		content, err := os.ReadFile(footerTemplateParm)
+		if err != nil {
+			log.Printf("Failed to read footer template file: %v", err)
+			footerTemplateParm = ""
+			footerTemplate = ""
+		} else {
+			footerTemplate = string(content)
+			log.Printf("Using Footer template: %v\n", footerTemplateParm)
+		}
 	}
 
 	markdownContent, err := os.ReadFile(markdownFile)
@@ -35,10 +62,10 @@ func main() {
 		log.Printf("Failed to read markdown file: %v", err)
 		os.Exit(2)
 	}
+	markdownContent = insertTOC(markdownContent)
 
 	// Convert markdown to HTML (you can use any markdown to HTML converter)
 	htmlContent := convertMarkdownToHTML(string(markdownContent))
-
 	tempHTMLFile, err := os.Create("md-html-temp.html")
 	if err != nil {
 		log.Printf("Failed to create temporary HTML file: %v", err)
@@ -68,7 +95,7 @@ func main() {
 	// Run chromedp tasks
 	var pdfBuffer []byte
 	uri := "file://" + fullPath
-	err = chromedp.Run(ctx, generatePDF(uri, &pdfBuffer))
+	err = chromedp.Run(ctx, generatePDF(uri, &pdfBuffer, footerTemplate))
 	if err != nil {
 		fmt.Printf("Failed to generate file: %v \n", uri)
 		log.Fatalf("Failed to generate PDF: %v\n", err)
@@ -77,7 +104,7 @@ func main() {
 	// Write the PDF to a file
 	// Strip extension from markdown file
 
-	pdfFile := stripExtension(markdownFile)+".pdf"
+	pdfFile := stripExtension(markdownFile) + ".pdf"
 	err = os.WriteFile(pdfFile, pdfBuffer, 0644)
 	if err != nil {
 		log.Fatalf("Failed to write PDF file: %v - ", err)
@@ -108,11 +135,37 @@ func convertMarkdownToHTML(markdownInput string) []byte {
 	return markdown.Render(doc, renderer)
 }
 
-func generatePDF(urlstr string, res *[]byte) chromedp.Tasks {
+// generatePDF generates a PDF from the given URL and stores it in the res variable
+// see https://github.com/chromedp/cdproto/blob/master/page/page.go
+func generatePDF(urlstr string, res *[]byte, footertemplate string) chromedp.Tasks {
+	marginTop := float64(0.8)    // 0.4 inch margin,
+	marginBottom := float64(0.8) // 0.4 inch margin,
+	marginLeft := float64(0.8)   // 0.4 inch margin,
+	marginRight := float64(0.8)  // 0.4 inch margin,
+	// A4 paper size
+	paperWidth := float64(8.27)   // 8.5 inch
+	paperHeight := float64(11.69) // 11 inch
+
+	printToPDF := page.PrintToPDF().
+		WithPrintBackground(false).
+		WithMarginTop(marginTop).
+		WithMarginBottom(marginBottom).
+		WithMarginLeft(marginLeft).
+		WithMarginRight(marginRight).
+		WithPaperWidth(paperWidth).
+		WithPaperHeight(paperHeight)
+
+	// Conditionally add FooterTemplate
+	if footertemplate != "" {
+		printToPDF = printToPDF.WithFooterTemplate(footertemplate).WithDisplayHeaderFooter(true)
+		printToPDF = printToPDF.WithHeaderTemplate("<span class=title></span>")
+
+	}
+
 	return chromedp.Tasks{
 		chromedp.Navigate(urlstr),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err := page.PrintToPDF().WithPrintBackground(false).Do(ctx)
+			buf, _, err := printToPDF.Do(ctx)
 			if err != nil {
 				return err
 			}
@@ -130,8 +183,58 @@ func fileExists(filePath string) bool {
 	return err == nil
 }
 
-
 func stripExtension(filename string) string {
 	ext := filepath.Ext(filename)
 	return strings.TrimSuffix(filename, ext)
+}
+
+func insertTOC(markdownContent []byte) []byte {
+	// Parse the markdown content
+	parser := parser.New()
+	doc := markdown.Parse(markdownContent, parser)
+
+	// Generate the TOC
+	toc := generateTOC(doc)
+
+	// replace TOC placeholder with the generated TOC
+	markdownContent = bytes.Replace(markdownContent, []byte(TOC), []byte(toc), 1)
+	return markdownContent
+}
+
+func generateTOC(doc ast.Node) string {
+	var tocBuilder strings.Builder
+	ast.WalkFunc(doc, func(node ast.Node, entering bool) ast.WalkStatus {
+		if !entering {
+			return ast.GoToNext
+		}
+
+		if header, ok := node.(*ast.Heading); ok {
+			if header.Level > 3 {
+				return ast.GoToNext
+			}
+
+			text := extractText(header)
+			anchor := generateAnchor(text)
+			tocBuilder.WriteString(fmt.Sprintf("%s- [%s](#%s)\n", strings.Repeat("  ", header.Level-1), text, anchor))
+		}
+
+		return ast.GoToNext
+	})
+
+	tocBuilder.WriteString("\n")
+	return tocBuilder.String()
+}
+
+func extractText(header *ast.Heading) string {
+	var textBuilder strings.Builder
+	for _, node := range header.Children {
+		if text, ok := node.(*ast.Text); ok {
+			textBuilder.Write(text.Literal)
+		}
+	}
+	return textBuilder.String()
+}
+
+func generateAnchor(text string) string {
+	return strings.ToLower(strings.ReplaceAll(text, " ", "-"))
 }

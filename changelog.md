@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 ### Removed
 
+## [v0.1.1] - 2024-11-14
+### Added
+- replace {{.TOC}} with an Table of content
+- Set size to DIN A4
+### Changed
+- Paramter unix style "--" instead of "-"
+
+
 ## [v0.1.0] - 2024-11-14
 
 ### Added
