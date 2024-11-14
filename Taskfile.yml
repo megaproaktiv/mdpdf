@@ -20,3 +20,11 @@ tasks:
     cmds:
       - cp dist/{{.APP}} /usr/local/bin/{{.APP}}
     silent: true
+
+  release:
+    desc: "Release with goreleaser"
+    deps:
+      - build
+    cmds:
+      - tar -czf dist/{{.APP}}.tar.gz dist/{{.APP}}
+    silent: true
