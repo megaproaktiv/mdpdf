@@ -1,5 +1,17 @@
 # Markdown to pdf
 
+What problem does this solve?
+
+I often use the previewer enhanced from VSCode to create PDF Files from markdown files.
+But wen i want to automate the creation of several markdown file pdfs at once, it gets tricky.
+
+Using *pandoc* you need to install latex. It will look real nice, but it takes time.
+I tried some other solutions but non fit.
+
+So the idea was to use the Chrome Chrome DevTools Protocol. This fast small go app calls chrome to render markdown to pdf, so that you can automate it from the command line. 
+
+## Usage
+
 You need to have chrome installed.
 
 Call app with the markdown file as parameter.

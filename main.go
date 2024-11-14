@@ -158,7 +158,7 @@ func generatePDF(urlstr string, res *[]byte, footertemplate string) chromedp.Tas
 	// Conditionally add FooterTemplate
 	if footertemplate != "" {
 		printToPDF = printToPDF.WithFooterTemplate(footertemplate).WithDisplayHeaderFooter(true)
-		printToPDF = printToPDF.WithHeaderTemplate("<span class=title></span>")
+		printToPDF = printToPDF.WithHeaderTemplate(`<div class="page-header" style="width:100%; text-align:center;  font-size:12px;"><span class=title></span></div>`)
 
 	}
 
