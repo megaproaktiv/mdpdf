@@ -1,0 +1,22 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  APP: mdpdf
+
+tasks:
+  build:
+    desc: "Build the binary in dist"
+    cmds:
+      - mkdir -p dist
+      - go build -o dist/{{.APP}}
+    silent: true
+
+  install-local:
+    desc: "Install the binary in /usr/local/bin"
+    deps:
+      - build
+    cmds:
+      - cp dist/{{.APP}} /usr/local/bin/{{.APP}}
+    silent: true
