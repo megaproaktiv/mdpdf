@@ -26,15 +26,14 @@ func main() {
 	var (
 		footerTemplateParm string
 		footerTemplate     string
-		markdownFile       string
 	)
 
-	pflag.StringVar(&markdownFile, "markdown", "", "markdown file")
 	pflag.StringVar(&footerTemplateParm, "footer-template", "", "Footer template")
 
 	// Parse flags
 	pflag.Parse()
 
+	markdownFile := os.Args[1]
 	if !fileExists(markdownFile) {
 		log.Printf("File does not exist: %s\n", markdownFile)
 		os.Exit(1)
